@@ -17,7 +17,7 @@ fn execute_opcode(starting_position: usize, program: &mut Vec<usize>) {
 
     program[destination] = result;
     
-    println!("Operation: {}, on {} {} = {}, into {}", operation, operand_1, operand_2, result, destination);
+    //println!("Operation: {}, on {} {} = {}, into {}", operation, operand_1, operand_2, result, destination);
 }
 
 fn execute_program(program: &mut Vec<usize>) {
@@ -50,16 +50,37 @@ fn parse_file(file_name: &Path) -> Vec<usize> {
     return parse_program(&line);
 }
 
+fn find_answer(program: &Vec<usize>, answer: usize) -> Result<(usize, usize), &str> {
+    for noun in 0..100 {
+        for verb in 0..100 {
+            let mut program_instance = program.to_vec();
+
+            //Fix up error
+            program_instance[1] = noun;
+            program_instance[2] = verb;    
+            execute_program(&mut program_instance);
+            println!("Noun: {}, Verb: {} produces {}", noun, verb, program_instance[0]);
+            
+            if program_instance[0] == answer {
+                return Ok((noun, verb));
+            }
+        }
+    }
+
+    return Err("Could not find an answer!");
+}
+
 fn main() {
     let args: Vec<String> = env::args().collect();
     let input_file = Path::new(&args[1]);
 
-    let mut program = parse_file(&input_file);
+    let initial_program = parse_file(&input_file);
 
-    //Fix up error
-    program[1] = 12;
-    program[2] = 2;
-    println!("Before: {:?}", program);
-    execute_program(&mut program);
-    println!("Result: {:?}", program);
+    let (noun, verb) = match find_answer(&initial_program, 19690720) {
+        Err(why) => panic!("{}", why),
+        Ok(value) => value
+    };
+    
+    let magic_number = (100 * noun) + verb;
+    println!("Found noun={}, verb={} (magic number: {})", noun, verb, magic_number);
 }
