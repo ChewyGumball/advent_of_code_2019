@@ -13,38 +13,51 @@ fn overlap(start_a: i32, end_a: i32, start_b: i32, end_b:i32) -> bool {
 #[derive(Clone)]
 struct Point {
     x: i32,
-    y: i32
+    y: i32,
+    steps: i32
 }
 
 impl Point {
-    fn new(x: i32, y: i32) -> Point{
-        return Point {
-            x: x,
-            y: y
-        };
+    fn new(x: i32, y: i32, steps: i32) -> Point{
+        return Point {x, y, steps};
     }
 
-    fn manhattan_distance(&self) -> i32 {
-        return self.x.abs() + self.y.abs();
-    }
+    // fn manhattan_distance(&self) -> i32 {
+    //     return self.x.abs() + self.y.abs();
+    // }
 }
 
 impl ops::Add<Point> for Point {
     type Output = Point;
     fn add(self, other: Point) -> Point {
-        return Point::new(self.x + other.x, self.y + other.y);
+        return Point::new(self.x + other.x, self.y + other.y, self.steps + other.steps);
     }
 }
 
 impl fmt::Display for Point {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "({}, {})", self.x, self.y)
+        write!(f, "({}, {}) ({} steps)", self.x, self.y, self.steps)
     }
 }
 
 impl PartialEq for Point {
     fn eq(&self, other: &Point) -> bool {
         return self.x == other.x && self.y == other.y;
+    }
+}
+
+struct Intersection {
+    first_point: Point,
+    second_point: Point
+}
+
+impl Intersection {
+    fn new(first_point: Point, second_point: Point) -> Intersection {
+        return Intersection {first_point, second_point}
+    }
+
+    fn total_steps(&self) -> i32 {
+        return self.first_point.steps + self.second_point.steps;
     }
 }
 
@@ -62,25 +75,22 @@ struct WireSegment {
 
 impl WireSegment {
     fn new(start: Point, end: Point) -> WireSegment {
-        return WireSegment {
-            start: start,
-            end: end
-        };
+        return WireSegment {start, end};
     }
 
     fn from(start: Point, direction: Direction, distance: i32) -> WireSegment {
         let delta = match direction {
-            Direction::Up => Point::new(0, distance),
-            Direction::Down => Point::new(0, -distance),
-            Direction::Left => Point::new(-distance, 0),
-            Direction::Right => Point::new(distance, 0)
+            Direction::Up => Point::new(0, distance, distance),
+            Direction::Down => Point::new(0, -distance, distance),
+            Direction::Left => Point::new(-distance, 0, distance),
+            Direction::Right => Point::new(distance, 0, distance)
         };
 
         let end = start.clone() + delta;
         return WireSegment::new(start, end);
     }
 
-    fn intersects(&self, other: &WireSegment) -> Option<Point> {
+    fn intersects(&self, other: &WireSegment) -> Option<Intersection> {
         let self_max_x = cmp::max(self.start.x, self.end.x);
         let self_min_x = cmp::min(self.start.x, self.end.x);
         let self_max_y = cmp::max(self.start.y, self.end.y);
@@ -94,14 +104,30 @@ impl WireSegment {
         if overlap(self_min_x, self_max_x, other_min_x, other_max_x) &&
                overlap(self_min_y, self_max_y, other_min_y, other_max_y) {
             
-            if self.start == other.start || self.start == other.end {
-                return Some(self.start.clone());
-            } else if self.end == other.start || self.end == other.end {
-                return Some(self.end.clone());
+            if self.start == other.start {
+                return Some(Intersection::new(self.start.clone(), other.start.clone()));
+            } else if self.start == other.end {
+                return Some(Intersection::new(self.start.clone(), other.end.clone()));
+            } else if self.end == other.start {
+                return Some(Intersection::new(self.end.clone(), other.start.clone()));
+            } else if self.end == other.end {
+                return Some(Intersection::new(self.end.clone(), other.end.clone()));
             } else if self_min_x == self_max_x {
-                return Some(Point::new(self_min_x, other_min_y));
+                let self_distance = (other_min_y - self.start.y).abs();
+                let self_intersection = Point::new(self_min_x, other_min_y, self.start.steps + self_distance);
+
+                let other_distance = (self_min_x - other.start.x).abs();
+                let other_intersection = Point::new(self_min_x, other_min_y, other.start.steps + other_distance);
+
+                return Some(Intersection::new(self_intersection, other_intersection));
             } else {
-                return Some(Point::new(other_min_x, self_min_y));
+                let self_distance = (other_min_x - self.start.x).abs();
+                let self_intersection = Point::new(self_min_x, other_min_y, self.start.steps + self_distance);
+
+                let other_distance = (self_min_y - other.start.y).abs();
+                let other_intersection = Point::new(self_min_x, other_min_y, other.start.steps + other_distance);
+
+                return Some(Intersection::new(self_intersection, other_intersection));
             }
         }
         else {
@@ -131,7 +157,7 @@ fn parse_wire_segment(start: Point, description: &str) -> WireSegment {
 
 fn parse_wire(line: &String) -> Result<Vec<WireSegment>, std::io::Error> {
     return Ok(line.split(",")
-               .scan(Point::new(0, 0), |state, description| {
+               .scan(Point::new(0, 0, 0), |state, description| {
                    let segment = parse_wire_segment(state.clone(), &description);
                    *state = segment.end.clone();
                    return Some(segment);
@@ -157,7 +183,7 @@ fn parse_file(file_name: &Path) -> Result<(Vec<WireSegment>, Vec<WireSegment>), 
     return Ok((wire_1, wire_2));
 }
 
-fn find_intersections(segment: &WireSegment, other_wire: &Vec<WireSegment>) -> Vec<Point> {
+fn find_intersections(segment: &WireSegment, other_wire: &Vec<WireSegment>) -> Vec<Intersection> {
     return other_wire.iter()
                      .filter_map(|other_segment| segment.intersects(&other_segment))
                      .collect()
@@ -171,14 +197,14 @@ fn main() {
         Err(why) => panic!("{}", why),
         Ok(value) => value
     };
-    
-    let mut intersections: Vec<Point> = wire_1.iter()
+
+    let mut intersections: Vec<Intersection> = wire_1.iter()
                               .flat_map(|wire| find_intersections(&wire, &wire_2))
                               .collect();
-    intersections.sort_by_cached_key(|a| a.manhattan_distance());
+    intersections.sort_by_cached_key(|a| a.total_steps());
 
     println!("Intersections:");
     for intersection in intersections {
-        println!("\t({}, {}) => {}", intersection.x, intersection.y, intersection.manhattan_distance());
+        println!("\t{} => {}", intersection.first_point, intersection.total_steps());
     }
 }
